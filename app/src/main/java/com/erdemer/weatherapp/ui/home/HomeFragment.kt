@@ -5,10 +5,12 @@ import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.appcompat.widget.SearchView
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import com.erdemer.weatherapp.databinding.FragmentHomeBinding
 import com.erdemer.weatherapp.model.response.AutoCompleteSearchResponse
+import com.erdemer.weatherapp.ui.home.adapter.AutoCompleteSearchAdapter
 import com.erdemer.weatherapp.util.extension.collectFlow
 import com.erdemer.weatherapp.util.extension.collectLatestFlow
 import com.erdemer.weatherapp.util.extension.gone
@@ -21,6 +23,7 @@ class HomeFragment : Fragment() {
     private val binding get() = _binding!!
 
     private val viewModel: HomeViewModel by viewModels()
+    private var adapter: AutoCompleteSearchAdapter? = null
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -33,19 +36,65 @@ class HomeFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        collectLatestFlow(viewModel.state,stateCollector)
-        collectFlow(viewModel.event,eventCollector)
-        viewModel.getAutoCompleteSearchResult("Ist")
+        collectLatestFlow(viewModel.state, stateCollector)
+        collectFlow(viewModel.event, eventCollector)
     }
 
-    private val stateCollector: suspend (HomeViewModel.UiState) -> Unit = {state ->
-        onSearchResult(state.autoCompleteSearch)
+    private fun setAdapter() {
+        adapter = AutoCompleteSearchAdapter(autoCompleteSearchAdapterClickListener)
+        binding.rvAutoCompleteSearch.adapter = adapter
     }
 
-    private val eventCollector: suspend (HomeViewModel.Event) -> Unit = {event ->
-        when(event){
+    private fun setSearchFragment() {
+        binding.searchViewHome.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
+            override fun onQueryTextSubmit(query: String?): Boolean = false
+
+            override fun onQueryTextChange(newText: String?): Boolean {
+                if ((newText?.length ?: 0) >= 3) {
+                    //New Searches
+                    binding.rvAutoCompleteSearch.visible()
+                    viewModel.getAutoCompleteSearchResult(newText.toString())
+                } else if (newText.isNullOrEmpty().not()) {
+                    //Local (Old) Searches
+                    viewModel.returnAutoCompleteDbResult()
+                }
+                return false
+            }
+        })
+    }
+
+    private val stateCollector: suspend (HomeViewModel.UiState) -> Unit = { state ->
+        when(state.currentState){
+            HomeViewModel.State.INITIAL -> onInitialState()
+            HomeViewModel.State.AUTOCOMPLETE_SEARCH_LOCAL -> onLocalSearchResultArrived(state.localAutoCompleteSearch, state.typing ?: true)
+            HomeViewModel.State.AUTOCOMPLETE_SEARCH_REMOTE -> onSearchResultArrived(state.autoCompleteSearch)
+        }
+    }
+
+    private fun onInitialState() {
+        setAdapter()
+        setSearchFragment()
+    }
+
+    private fun onLocalSearchResultArrived(
+        localAutoCompleteSearch: List<AutoCompleteSearchUiModel>?,
+        isTyping: Boolean
+    ) {
+        Log.e("HomeFragment", "onLocalSearchResultArrived: ${localAutoCompleteSearch?.size}")
+        if (localAutoCompleteSearch?.isNotEmpty() == true) {
+            if (!isTyping) {
+                binding.rvAutoCompleteSearch.visible()
+                adapter?.submitList(localAutoCompleteSearch)
+            } else {
+                binding.rvAutoCompleteSearch.gone()
+            }
+        }
+    }
+
+    private val eventCollector: suspend (HomeViewModel.Event) -> Unit = { event ->
+        when (event) {
             is HomeViewModel.Event.Loading -> setProgressBar(event.isLoading)
-            is HomeViewModel.Event.Error -> Log.e("HomeFragment",event.error.toString())
+            is HomeViewModel.Event.Error -> Log.e("HomeFragment", event.error.toString())
         }
     }
 
@@ -56,12 +105,22 @@ class HomeFragment : Fragment() {
             binding.progressBar.gone()
     }
 
-    private fun onSearchResult(autoCompleteSearch: AutoCompleteSearchResponse?) {
-        Log.d("HomeFragment", "onSearchResult: $autoCompleteSearch")
+    private fun onSearchResultArrived(autoCompleteSearch: AutoCompleteSearchResponse?) {
+        adapter?.submitList(autoCompleteSearch?.map { viewModel.mapToAutoCompleteUiModel(it) })
     }
+
+    private val autoCompleteSearchAdapterClickListener =
+        fun(autoCompleteSearch: AutoCompleteSearchUiModel, _: Int) {
+            Log.e("HomeFragment", "Clicked -> ${autoCompleteSearch.cityName}")
+            viewModel.saveLocation(autoCompleteSearch, System.currentTimeMillis())
+            binding.searchViewHome.setQuery("", false)
+            binding.searchViewHome.clearFocus()
+        }
 
     override fun onDestroyView() {
         super.onDestroyView()
         _binding = null
     }
 }
+
+
