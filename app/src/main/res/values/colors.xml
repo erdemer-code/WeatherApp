@@ -10,5 +10,6 @@
 
     <color name="splash_bg_start">#F7F6DC</color>
     <color name="splash_bg_end">#B1D7B4</color>
+    <color name="dark_gray">#A9A9A9</color>
 
 </resources>

@@ -1,6 +1,8 @@
 package com.erdemer.weatherapp.ui.home
 
 import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
@@ -8,6 +10,7 @@ import android.view.ViewGroup
 import androidx.appcompat.widget.SearchView
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
+import com.erdemer.weatherapp.R
 import com.erdemer.weatherapp.databinding.FragmentHomeBinding
 import com.erdemer.weatherapp.model.response.AutoCompleteSearchResponse
 import com.erdemer.weatherapp.ui.home.adapter.AutoCompleteSearchAdapter
@@ -36,8 +39,40 @@ class HomeFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        initListeners()
         collectLatestFlow(viewModel.state, stateCollector)
         collectFlow(viewModel.event, eventCollector)
+    }
+
+    private fun initListeners() {
+
+        binding.ivCloseSearch.setOnClickListener {
+            binding.searchViewHome.setText("")
+            binding.searchViewHome.clearFocus()
+        }
+        binding.searchViewHome.setOnFocusChangeListener { _, b ->
+            if(b){
+                viewModel.returnAutoCompleteDbResult()
+            }
+        }
+        binding.searchViewHome.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(p0: CharSequence?, p1: Int, p2: Int, p3: Int)= Unit
+
+            override fun onTextChanged(p0: CharSequence?, p1: Int, p2: Int, p3: Int) {
+                if (p0.isNullOrEmpty().not()){
+                    binding.ivCloseSearch.visible()
+                }
+                else if ((p0?.length ?: 0) >= 3) {
+                    binding.rvAutoCompleteSearch.visible()
+                    viewModel.getAutoCompleteSearchResult(p0.toString())
+                } else {
+                    binding.ivCloseSearch.gone()
+                }
+            }
+
+            override fun afterTextChanged(p0: Editable?) = Unit
+
+        })
     }
 
     private fun setAdapter() {
@@ -46,7 +81,7 @@ class HomeFragment : Fragment() {
     }
 
     private fun setSearchFragment() {
-        binding.searchViewHome.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
+/*        binding.searchViewHome.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
             override fun onQueryTextSubmit(query: String?): Boolean = false
 
             override fun onQueryTextChange(newText: String?): Boolean {
@@ -60,7 +95,7 @@ class HomeFragment : Fragment() {
                 }
                 return false
             }
-        })
+        })*/
     }
 
     private val stateCollector: suspend (HomeViewModel.UiState) -> Unit = { state ->
@@ -113,7 +148,7 @@ class HomeFragment : Fragment() {
         fun(autoCompleteSearch: AutoCompleteSearchUiModel, _: Int) {
             Log.e("HomeFragment", "Clicked -> ${autoCompleteSearch.cityName}")
             viewModel.saveLocation(autoCompleteSearch, System.currentTimeMillis())
-            binding.searchViewHome.setQuery("", false)
+            binding.searchViewHome.setText("")
             binding.searchViewHome.clearFocus()
         }
 
